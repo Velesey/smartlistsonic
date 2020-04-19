@@ -2,6 +2,7 @@ import jaydebeapi
 import logging
 
 from db.db_track import DbTrackIterator
+from db.db_artist import DbArtistIterator
 
 
 def _escape_text(text: str):
@@ -45,6 +46,12 @@ class Database:
         cursor = self.connect.cursor()
         self._execute_sql_for_fetch(sql, cursor)
         return DbTrackIterator(cursor)
+
+    def get_artists(self) -> DbArtistIterator:
+        sql = f"""SELECT * FROM ARTIST ORDER BY NAME"""
+        cursor = self.connect.cursor()
+        self._execute_sql_for_fetch(sql, cursor)
+        return DbArtistIterator(cursor)
 
     def add_playlist(self, user_name: str, is_public: bool, name: str, comment) -> int:
         table_name = "PLAYLIST"
