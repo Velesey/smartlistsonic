@@ -1,0 +1,16 @@
+[db]
+driver_name = org.postgresql.Driver
+url = jdbc:postgresql://localhost:5432/subsonic?user=postgres&password=postgres
+driver_lib_path = lib/postgresql-42.2.12.jar
+
+[last.fm]
+api_key=<your key>
+api_secret=<your secret>
+username=<your last.fm username>
+password=<your last.fm password>
+
+[common]
+enable_top_artist_songs_playlists = true
+
+[top_artist_songs_playlist]
+playlist_max_length = 50
