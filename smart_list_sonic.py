@@ -27,7 +27,7 @@ for a in iter_artists:
             track = network.get_track(cur.artist, cur.title)
             play_cnt = track.get_playcount()
             logging.debug(F"From Last.Fm: Track {track}, play count {play_cnt}")
-            db.update_track_play_count(cur.id_, play_cnt)
+            db.update_track(cur.id_, play_cnt)
 
         except Exception as e:
             logging.error(e)

@@ -1,5 +1,4 @@
 from db.db_iterator import _DbIterator
-from db.db_media_file_type import DbMediaFileType
 
 
 class DbArtist:

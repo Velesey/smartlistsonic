@@ -1,5 +1,6 @@
 import jaydebeapi
 import logging
+import random
 
 from db.db_track import DbTrackIterator
 from db.db_artist import DbArtistIterator
@@ -15,9 +16,11 @@ class Database:
 
     def update_database(self):
         self._create_play_count_column()
+        self._create_random_column()
 
-    def update_track_play_count(self, id_: int, count: int):
-        sql = F"UPDATE MEDIA_FILE SET LASTFM_PLAY_COUNT = {count} WHERE ID = {id_}"
+    def update_track(self, id_: int, count: int):
+        rnd = round(random.random() * 10000)
+        sql = F"UPDATE MEDIA_FILE SET LASTFM_PLAY_COUNT = {count}, RANDOM = {rnd} WHERE ID = {id_}"
         self._execute_sql(sql)
 
     def get_tracks(self, artist: str) -> DbTrackIterator:
@@ -37,7 +40,7 @@ class Database:
         TRACK_NUMBER, YEAR, GENRE, BIT_RATE, DURATION_SECONDS, FILE_SIZE, PLAY_COUNT, LASTFM_PLAY_COUNT 
         FROM MEDIA_FILE M
         JOIN ( SELECT DISTINCT (SELECT ID FROM MEDIA_FILE M2 WHERE M2.TITLE = M1.TITLE 
-            AND M2.ARTIST = M1.ARTIST LIMIT 1) AS ID,  TITLE,  ARTIST
+            AND M2.ARTIST = M1.ARTIST ORDER BY RANDOM LIMIT 1) AS ID,  TITLE,  ARTIST
             FROM MEDIA_FILE M1
             WHERE UPPER(M1.ARTIST) = UPPER('{_escape_text(artist)}') AND M1.LASTFM_PLAY_COUNT IS NOT NULL 
             AND TYPE = 'MUSIC' ) M2
@@ -95,8 +98,20 @@ class Database:
         return id_ if id_ is not None else 0
 
     def _create_play_count_column(self):
-        sql = "ALTER TABLE MEDIA_FILE ADD COLUMN LASTFM_PLAY_COUNT INTEGER"
-        self._execute_sql(sql)
+        try:
+            sql = "ALTER TABLE MEDIA_FILE ADD COLUMN LASTFM_PLAY_COUNT INTEGER"
+            self._execute_sql(sql)
+        except Exception as e:
+            logging.error(e)
+
+    def _create_random_column(self):
+        try:
+            # Разные БД преставляют различный синтаксис для рандомной выборки
+            # чтобы не затачиваться на них, сделаем свой механизм рандома
+            sql = "ALTER TABLE MEDIA_FILE ADD COLUMN RANDOM INTEGER"
+            self._execute_sql(sql)
+        except Exception as e:
+            logging.error(e)
 
     def _execute_sql(self, sql: str):
         cursor = self.connect.cursor()
