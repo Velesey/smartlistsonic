@@ -1,6 +1,7 @@
 import jaydebeapi
 import logging
 import random
+import hashlib
 
 from db.db_track import DbTrackIterator
 from db.db_artist import DbArtistIterator
@@ -15,8 +16,8 @@ class Database:
         self.connect = jaydebeapi.connect(driver_name, url, None, driver_lib_path)
 
     def update_database(self):
-        self._create_play_count_column()
-        self._create_random_column()
+        self._create_column_playcount()
+        self._create_column_random()
 
     def update_track(self, id_: int, count: int):
         rnd = round(random.random() * 10000)
@@ -58,7 +59,8 @@ class Database:
 
     def add_playlist(self, user_name: str, is_public: bool, name: str, comment) -> int:
         table_name = "PLAYLIST"
-        id_ = self._get_min_table_id(table_name) - 1
+        id_ = self.generate_table_id(name)
+        logging.info(f'add id {id_}')
         sql = f"""INSERT INTO {table_name} (ID, USERNAME, IS_PUBLIC, NAME, COMMENT,  CREATED, CHANGED)
         VALUES 
         ({id_}, '{_escape_text(user_name)}', '{is_public}', '{_escape_text(name)}',
@@ -71,11 +73,20 @@ class Database:
                 WHERE ID = {id_}"""
         self._execute_sql(sql)
 
-    def clear_playlist(self):
+    def clear_all_my_playlists(self):
         sql = f"DELETE FROM PLAYLIST WHERE ID < 0"
         self._execute_sql(sql)
         sql = f"DELETE FROM PLAYLIST_FILE WHERE ID < 0"
         self._execute_sql(sql)
+
+    def delete_playlist(self, string : int):
+        id_ = self.generate_table_id(string)
+        logging.info(f'delete id {id_}')
+        sql = f"DELETE FROM PLAYLIST WHERE ID = {id_}"
+        self._execute_sql(sql)
+        sql = f"DELETE FROM PLAYLIST_FILE WHERE PLAYLIST_ID = {id_}"
+        self._execute_sql(sql)
+
 
     def fill_playlist(self, playlist_id: int, tracks: list):
         tracks.reverse()
@@ -97,14 +108,20 @@ class Database:
         id_ = cursor.fetchone()[0]
         return id_ if id_ is not None else 0
 
-    def _create_play_count_column(self):
+    def generate_table_id(self, string: str) -> int:
+        hash_ = int(hashlib.md5(string.encode('utf-8')).hexdigest()[:7], 16)
+        if hash_ > 0:
+            hash_ = hash_ * -1
+        return hash_
+
+    def _create_column_playcount(self):
         try:
             sql = "ALTER TABLE MEDIA_FILE ADD COLUMN LASTFM_PLAY_COUNT INTEGER"
             self._execute_sql(sql)
         except Exception as e:
             logging.error(e)
 
-    def _create_random_column(self):
+    def _create_column_random(self):
         try:
             # Разные БД преставляют различный синтаксис для рандомной выборки
             # чтобы не затачиваться на них, сделаем свой механизм рандома
