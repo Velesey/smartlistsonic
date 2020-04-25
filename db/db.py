@@ -2,26 +2,68 @@ import jaydebeapi
 import logging
 import random
 import hashlib
+import os
 
 from db.db_track import DbTrackIterator
 from db.db_artist import DbArtistIterator
+from db.db_tag import DbTagIterator
 
 
 def _escape_text(text: str):
-    return text.replace("'", "''")
+    if text is not None:
+        return text.replace("'", "''")
+    return str
 
 
 class Database:
     def __init__(self, driver_name: str, url: str, driver_lib_path: str):
-        self.connect = jaydebeapi.connect(driver_name, url, None, driver_lib_path)
+        full_path = f'{os.path.dirname(os.path.realpath(__file__))}/../{driver_lib_path}'
+        self.connect = jaydebeapi.connect(driver_name, url, None, full_path)
 
     def update_database(self):
         self._create_column_playcount()
         self._create_column_random()
+        self._create_table_tag()
+        self._create_table_artist_tag()
 
-    def update_track(self, id_: int, count: int):
+    def add_or_get_tag(self, name) -> int:
+        table_name = "TAG"
+        sql = f"""SELECT ID FROM {table_name} WHERE UPPER(NAME) = UPPER('{_escape_text(name)}')"""
+        cursor = self.connect.cursor()
+        self._execute_sql_for_fetch(sql, cursor)
+        data = cursor.fetchone()
+        if data is not None:
+            id_ = data[0]
+            if id_ is not None:
+                return id_
+        id_ = self._get_min_table_id(table_name) - 1
+        sql = f"""INSERT INTO {table_name} (ID, NAME) VALUES ({id_}, UPPER('{_escape_text(name)}'))"""
+        self._execute_sql(sql)
+        return id_
+
+    def add_tag_to_artist(self, artist_id: int, tag_id: int, weight: int):
+        table_name = "TAG_ARTIST"
+        id_ = self._get_min_table_id(table_name) - 1
+        sql = f"""INSERT INTO {table_name} ( ID, ARTIST_ID, TAG_ID, WEIGHT)
+                    VALUES ({id_}, {artist_id}, {tag_id}, {weight})"""
+        self._execute_sql(sql)
+
+    def get_tags(self):
+        sql = f"SELECT * FROM TAG"
+        cursor = self.connect.cursor()
+        self._execute_sql_for_fetch(sql, cursor)
+        return DbTagIterator(cursor)
+
+    def remove_tags_from_artist(self, artist_id):
+        sql = f"""DELETE FROM TAG_ARTIST WHERE ARTIST_ID = {artist_id}"""
+        self._execute_sql(sql)
+
+    def update_track(self, id_: int, last_fm_playcount: int, artist_name: str):
         rnd = round(random.random() * 10000)
-        sql = F"UPDATE MEDIA_FILE SET LASTFM_PLAY_COUNT = {count}, RANDOM = {rnd} WHERE ID = {id_}"
+        sql = F"""UPDATE MEDIA_FILE SET LASTFM_PLAY_COUNT = {last_fm_playcount}, RANDOM = {rnd} """
+        if artist_name is not None:
+            sql += f", ARTIST = '{artist_name}'"
+        sql += f" WHERE ID = {id_}"
         self._execute_sql(sql)
 
     def get_tracks(self, artist: str) -> DbTrackIterator:
@@ -51,17 +93,37 @@ class Database:
         self._execute_sql_for_fetch(sql, cursor)
         return DbTrackIterator(cursor)
 
+    def get_tag_tracks(self, tag_id: int, limit: int, weight: int) -> DbTrackIterator:
+        sql = f"""SELECT  M.ID, PATH, FOLDER, TYPE, FORMAT, M.TITLE, ALBUM, M.ARTIST, DISC_NUMBER, 
+        TRACK_NUMBER, YEAR, GENRE, BIT_RATE, DURATION_SECONDS, FILE_SIZE, PLAY_COUNT, LASTFM_PLAY_COUNT 
+        FROM MEDIA_FILE M
+        JOIN ( SELECT DISTINCT (SELECT ID FROM MEDIA_FILE M2 WHERE M2.TITLE = M1.TITLE 
+            AND M2.ARTIST = M1.ARTIST ORDER BY RANDOM LIMIT 1) AS ID, TITLE,  ARTIST
+            FROM MEDIA_FILE M1
+            WHERE UPPER(M1.ARTIST) in (SELECT UPPER(A.NAME) FROM artist A JOIN tag_artist TA 
+            ON TA.ARTIST_ID = A.ID JOIN TAG T ON TA.TAG_ID = T.ID WHERE T.ID = {tag_id} 
+            AND WEIGHT >= {weight})
+            AND M1.LASTFM_PLAY_COUNT IS NOT NULL AND TYPE = 'MUSIC' ) M2
+        ON M.ID = M2.ID
+        ORDER BY M.RANDOM DESC LIMIT  {limit} """
+
+        cursor = self.connect.cursor()
+        self._execute_sql_for_fetch(sql, cursor)
+        return DbTrackIterator(cursor)
+
     def get_artists(self) -> DbArtistIterator:
         sql = f"""SELECT * FROM ARTIST ORDER BY NAME"""
         cursor = self.connect.cursor()
         self._execute_sql_for_fetch(sql, cursor)
         return DbArtistIterator(cursor)
 
+    def update_artist(self, id_: int, name: str):
+        sql = f"""UPDATE ARTIST SET NAME = '{name}' WHERE ID = {id_}"""
+        self._execute_sql(sql)
+
     def add_playlist(self, user_name: str, is_public: bool, name: str, comment) -> int:
-        table_name = "PLAYLIST"
         id_ = self.generate_table_id(name)
-        logging.info(f'add id {id_}')
-        sql = f"""INSERT INTO {table_name} (ID, USERNAME, IS_PUBLIC, NAME, COMMENT,  CREATED, CHANGED)
+        sql = f"""INSERT INTO PLAYLIST (ID, USERNAME, IS_PUBLIC, NAME, COMMENT,  CREATED, CHANGED)
         VALUES 
         ({id_}, '{_escape_text(user_name)}', '{is_public}', '{_escape_text(name)}',
         '{_escape_text(comment)}', CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"""
@@ -79,14 +141,13 @@ class Database:
         sql = f"DELETE FROM PLAYLIST_FILE WHERE ID < 0"
         self._execute_sql(sql)
 
-    def delete_playlist(self, string : int):
+    def delete_playlist(self, string: str):
         id_ = self.generate_table_id(string)
         logging.info(f'delete id {id_}')
         sql = f"DELETE FROM PLAYLIST WHERE ID = {id_}"
         self._execute_sql(sql)
         sql = f"DELETE FROM PLAYLIST_FILE WHERE PLAYLIST_ID = {id_}"
         self._execute_sql(sql)
-
 
     def fill_playlist(self, playlist_id: int, tracks: list):
         tracks.reverse()
@@ -126,6 +187,21 @@ class Database:
             # Разные БД преставляют различный синтаксис для рандомной выборки
             # чтобы не затачиваться на них, сделаем свой механизм рандома
             sql = "ALTER TABLE MEDIA_FILE ADD COLUMN RANDOM INTEGER"
+            self._execute_sql(sql)
+        except Exception as e:
+            logging.error(e)
+
+    def _create_table_tag(self):
+        try:
+            sql = """ CREATE TABLE TAG ( ID INTEGER, NAME VARCHAR(128), PRIMARY KEY (ID) ) """
+            self._execute_sql(sql)
+        except Exception as e:
+            logging.error(e)
+
+    def _create_table_artist_tag(self):
+        try:
+            sql = """CREATE TABLE TAG_ARTIST (ID INTEGER, ARTIST_ID INTEGER, TAG_ID INTEGER,
+              WEIGHT INTEGER,  PRIMARY KEY (ID) ) """
             self._execute_sql(sql)
         except Exception as e:
             logging.error(e)

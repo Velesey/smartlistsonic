@@ -11,6 +11,12 @@ password=<your last.fm password>
 
 [common]
 enable_top_artist_songs_playlists = true
+enable_artist_name_correction = true
+enable_top_tags_playlists = true
 
 [top_artist_songs_playlist]
 playlist_max_length = 50
+
+[top_tag_playlist]
+min_tag_weight = 70
+playlist_max_length = 300
