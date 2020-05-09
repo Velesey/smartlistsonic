@@ -17,6 +17,7 @@ network = pylast.LastFMNetwork(api_key=config.lastfm.api_key, api_secret=config.
 
 def get_and_update_tags_from_lastfm(db: Database, artist: pylast.Artist, db_artist: DbArtist):
     try:
+        logging.debug(F"Try get tags from Last.Fm: Artist '{db_artist.name}'")
         tags = artist.get_top_tags()
         db.remove_tags_from_artist(db_artist.id_)
         for tag in tags:
@@ -60,9 +61,10 @@ def get_and_update_playcount_from_lastfm(db: Database, db_artist: DbArtist, arti
     for t in iter_tracks:
         db_track = iter_tracks.cur
         try:
+            logging.debug(F"Try get info from Last.Fm: Track '{db_track.title}', artist '{db_artist.name}'")
             track = network.get_track(db_track.artist, db_track.title)
             play_cnt = track.get_playcount()
-            logging.debug(F"From Last.Fm: Track {track}, play count {play_cnt}")
+            logging.debug(F"Got from Last.Fm: Track '{track}', play count {play_cnt}")
             db.update_track(db_track.id_, play_cnt, artist_name)
 
         except Exception as e:
