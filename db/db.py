@@ -49,7 +49,7 @@ class Database:
                     VALUES ({id_}, {artist_id}, {tag_id}, {weight})"""
         self._execute_sql(sql)
 
-    def get_tags(self):
+    def get_tags(self) -> DbTagIterator:
         sql = f"SELECT * FROM TAG"
         cursor = self.connect.cursor()
         self._execute_sql_for_fetch(sql, cursor)
@@ -60,7 +60,7 @@ class Database:
         self._execute_sql(sql)
 
     def update_track(self, id_: int, last_fm_playcount: int, artist_name: str):
-        rnd = round(random.random() * 10000)
+        rnd = round(random.random() * 100000)
         sql = F"""UPDATE MEDIA_FILE SET LASTFM_PLAY_COUNT = {last_fm_playcount}, RANDOM = {rnd} """
         if artist_name is not None:
             sql += f", ARTIST = '{artist_name}'"
@@ -94,19 +94,19 @@ class Database:
         self._execute_sql_for_fetch(sql, cursor)
         return DbTrackIterator(cursor)
 
-    def get_tag_tracks(self, tag_id: int, limit: int, weight: int) -> DbTrackIterator:
+    def get_tag_tracks(self, super_tag: str, limit: int, weight: int) -> DbTrackIterator:
         sql = f"""SELECT  M.ID, PATH, FOLDER, TYPE, FORMAT, M.TITLE, ALBUM, M.ARTIST, DISC_NUMBER, 
         TRACK_NUMBER, YEAR, GENRE, BIT_RATE, DURATION_SECONDS, FILE_SIZE, PLAY_COUNT, LASTFM_PLAY_COUNT 
         FROM MEDIA_FILE M
         JOIN ( SELECT DISTINCT (SELECT ID FROM MEDIA_FILE M2 WHERE M2.TITLE = M1.TITLE 
             AND M2.ARTIST = M1.ARTIST ORDER BY RANDOM LIMIT 1) AS ID, TITLE,  ARTIST
             FROM MEDIA_FILE M1
-            WHERE UPPER(M1.ARTIST) in (SELECT UPPER(A.NAME) FROM artist A JOIN tag_artist TA 
-            ON TA.ARTIST_ID = A.ID JOIN TAG T ON TA.TAG_ID = T.ID WHERE T.ID = {tag_id} 
+            WHERE UPPER(M1.ARTIST) in (SELECT UPPER(A.NAME) FROM ARTIST A JOIN TAG_ARTIST TA 
+            ON TA.ARTIST_ID = A.ID JOIN TAG T ON TA.TAG_ID = T.ID WHERE T.SUPER_TAG = '{_escape_text(super_tag)}' 
             AND WEIGHT >= {weight})
-            AND M1.LASTFM_PLAY_COUNT IS NOT NULL AND TYPE = 'MUSIC' ) M2
-        ON M.ID = M2.ID
-        ORDER BY M.RANDOM DESC LIMIT  {limit} """
+            AND M1.LASTFM_PLAY_COUNT IS NOT NULL AND TYPE = 'MUSIC' ) M2 ON M.ID = M2.ID
+                ORDER BY ((M.LASTFM_PLAY_COUNT + (M.PLAY_COUNT * (SELECT AVG(LASTFM_PLAY_COUNT) 
+                FROM MEDIA_FILE)))  / M.RANDOM) DESC  LIMIT  {limit} """
 
         cursor = self.connect.cursor()
         self._execute_sql_for_fetch(sql, cursor)
