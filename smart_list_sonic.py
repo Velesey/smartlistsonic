@@ -17,7 +17,6 @@ network = pylast.LastFMNetwork(api_key=config.lastfm.api_key, api_secret=config.
 
 
 def get_and_update_tags_from_lastfm(db: Database, artist: pylast.Artist, db_artist: DbArtist):
-    return
     try:
         genres_helper = GenresHelper()
         logging.debug(F"Try get tags from Last.Fm: Artist '{db_artist.name}'")
