@@ -5,8 +5,9 @@ import sys
 from db.db import *
 from config import Config
 from db.db_artist import DbArtist
+from genres import GenresHelper
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 config = Config()
 
@@ -17,11 +18,14 @@ network = pylast.LastFMNetwork(api_key=config.lastfm.api_key, api_secret=config.
 
 def get_and_update_tags_from_lastfm(db: Database, artist: pylast.Artist, db_artist: DbArtist):
     try:
+        genres_helper = GenresHelper()
         logging.debug(F"Try get tags from Last.Fm: Artist '{db_artist.name}'")
         tags = artist.get_top_tags()
         db.remove_tags_from_artist(db_artist.id_)
         for tag in tags:
-            tag_id = db.add_or_get_tag(tag.item.name)
+            tag_name = tag.item.name
+            super_tag = genres_helper.get_super_genre_name(tag_name)
+            tag_id = db.add_or_get_tag(tag.item.name, super_tag)
             db.add_tag_to_artist(db_artist.id_, tag_id, tag.weight)
 
     except Exception as e:
@@ -61,7 +65,8 @@ def get_and_update_playcount_from_lastfm(db: Database, db_artist: DbArtist, arti
     for t in iter_tracks:
         db_track = iter_tracks.cur
         try:
-            logging.debug(F"Try get info from Last.Fm: Track '{db_track.title}', artist '{db_artist.name}'")
+            logging.debug(
+                F"Try get info from Last.Fm: Track '{db_track.title}', artist '{db_artist.name}'")
             track = network.get_track(db_track.artist, db_track.title)
             play_cnt = track.get_playcount()
             logging.debug(F"Got from Last.Fm: Track '{track}', play count {play_cnt}")

@@ -26,7 +26,7 @@ class Database:
         self._create_table_tag()
         self._create_table_artist_tag()
 
-    def add_or_get_tag(self, name) -> int:
+    def add_or_get_tag(self, name: str, super_tag: str) -> int:
         table_name = "TAG"
         sql = f"""SELECT ID FROM {table_name} WHERE UPPER(NAME) = UPPER('{_escape_text(name)}')"""
         cursor = self.connect.cursor()
@@ -37,7 +37,8 @@ class Database:
             if id_ is not None:
                 return id_
         id_ = self._get_min_table_id(table_name) - 1
-        sql = f"""INSERT INTO {table_name} (ID, NAME) VALUES ({id_}, UPPER('{_escape_text(name)}'))"""
+        sql = f"""INSERT INTO {table_name} (ID, NAME, SUPER_TAG) VALUES ({id_}, 
+            UPPER('{_escape_text(name)}'), UPPER('{_escape_text(super_tag)}'))"""
         self._execute_sql(sql)
         return id_
 
@@ -193,7 +194,8 @@ class Database:
 
     def _create_table_tag(self):
         try:
-            sql = """ CREATE TABLE TAG ( ID INTEGER, NAME VARCHAR(128), PRIMARY KEY (ID) ) """
+            sql = """ CREATE TABLE TAG ( ID INTEGER, NAME VARCHAR(128), SUPER_TAG VARCHAR(128),
+            PRIMARY KEY (ID) ) """
             self._execute_sql(sql)
         except Exception as e:
             logging.error(e)

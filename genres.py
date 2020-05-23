@@ -66,8 +66,3 @@ class GenresHelper:
                 affiliation = aff
                 super_genre_name = s.name
         return super_genre_name
-
-
-s = GenresHelper()
-
-print(s.get_super_genre_name("SUPER ROCK"))
